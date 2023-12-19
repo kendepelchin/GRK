@@ -1,69 +1,151 @@
-export class Item {
-  name: string;
-  sellIn: number;
-  quality: number;
+import { Item, QUALITY } from "./Item";
 
-  constructor(name, sellIn, quality) {
-    this.name = name;
-    this.sellIn = sellIn;
-    this.quality = quality;
-  }
-}
+const AGED_BRIE = "Aged Brie";
+const BACKSTAGE_PASSES = "Backstage passes to a TAFKAL80ETC concert";
+const SULFURAS = "Sulfuras, Hand of Ragnaros";
+const CONJURED = "Conjured";
 
 export class GildedRose {
-  items: Array<Item>;
+  items: Item[];
 
-  constructor(items = [] as Array<Item>) {
-    this.items = items;
+  constructor(items: Item[]) {
+    this.items = items ?? [];
   }
 
   updateQuality() {
-    for (let i = 0; i < this.items.length; i++) {
-      if (this.items[i].name != 'Aged Brie' && this.items[i].name != 'Backstage passes to a TAFKAL80ETC concert') {
-        if (this.items[i].quality > 0) {
-          if (this.items[i].name != 'Sulfuras, Hand of Ragnaros') {
-            this.items[i].quality = this.items[i].quality - 1
-          }
+    return this.items.map((item) => {
+      switch (item.name) {
+        case SULFURAS: {
+          return updateSulfuras(item);
         }
-      } else {
-        if (this.items[i].quality < 50) {
-          this.items[i].quality = this.items[i].quality + 1
-          if (this.items[i].name == 'Backstage passes to a TAFKAL80ETC concert') {
-            if (this.items[i].sellIn < 11) {
-              if (this.items[i].quality < 50) {
-                this.items[i].quality = this.items[i].quality + 1
-              }
-            }
-            if (this.items[i].sellIn < 6) {
-              if (this.items[i].quality < 50) {
-                this.items[i].quality = this.items[i].quality + 1
-              }
-            }
-          }
+        case AGED_BRIE: {
+          return updateAgedBrie(item);
         }
-      }
-      if (this.items[i].name != 'Sulfuras, Hand of Ragnaros') {
-        this.items[i].sellIn = this.items[i].sellIn - 1;
-      }
-      if (this.items[i].sellIn < 0) {
-        if (this.items[i].name != 'Aged Brie') {
-          if (this.items[i].name != 'Backstage passes to a TAFKAL80ETC concert') {
-            if (this.items[i].quality > 0) {
-              if (this.items[i].name != 'Sulfuras, Hand of Ragnaros') {
-                this.items[i].quality = this.items[i].quality - 1
-              }
-            }
-          } else {
-            this.items[i].quality = this.items[i].quality - this.items[i].quality
-          }
-        } else {
-          if (this.items[i].quality < 50) {
-            this.items[i].quality = this.items[i].quality + 1
-          }
+        case BACKSTAGE_PASSES: {
+          return updateBackStagePasses(item);
         }
-      }
-    }
+        case CONJURED: {
+          return updateConjured(item);
+        }
+        default: {
+          const { quality, sellIn } = item;
 
-    return this.items;
+          // Once the sell by date has passed, Quality degrades twice as fast
+          const updatedQuality = isPastDate(sellIn)
+            ? decreaseQuality(decreaseQuality(quality))
+            : decreaseQuality(quality);
+
+          return new Item(item.name, decreaseSellIn(sellIn), updatedQuality);
+        }
+      }
+    });
   }
+}
+
+/**
+ *
+ * Is the sellIn date in the past?
+ *
+ * @param sellIn
+ * @returns boolean
+ */
+
+function isPastDate(sellIn: number) {
+  return sellIn <= 0;
+}
+
+/**
+ * Decrease the given quality value by one.
+ *
+ * @param quality
+ * @returns number
+ */
+function decreaseQuality(quality: number) {
+  return Math.min(Math.max(quality - 1, QUALITY.MIN), QUALITY.MAX);
+}
+
+/**
+ * Decrease the given sellIn value by one.
+ *
+ * @param sellIn
+ * @returns number
+ */
+function decreaseSellIn(sellIn: number) {
+  return sellIn - 1;
+}
+
+/**
+ * Increase the given quality value by one.
+ *
+ * @param quality
+ * @returns number
+ */
+function increaseQuality(quality: number) {
+  return Math.min(Math.max(quality + 1, QUALITY.MIN), QUALITY.MAX);
+}
+
+/**
+ * "Aged Brie" actually increases in Quality the older it gets.
+ *
+ * @param item
+ * @returns Item
+ */
+function updateAgedBrie(item: Item): Item {
+  return new Item(
+    item.name,
+    decreaseSellIn(item.sellIn),
+    increaseQuality(item.quality)
+  );
+}
+
+/**
+ * "Conjured" items degrade in Quality twice as fast as normal items
+ *
+ * @param item
+ * @returns Item
+ */
+
+function updateConjured(item: Item): Item {
+  return new Item(
+    item.name,
+    decreaseSellIn(item.sellIn),
+    decreaseQuality(decreaseQuality(item.quality))
+  );
+}
+
+/**
+ * "Sulfuras", being a legendary item, never has to be sold or decreases in Quality
+ *
+ * @param item
+ * @returns Item
+ */
+function updateSulfuras(item: Item): Item {
+  return new Item(item.name, item.sellIn, 80);
+}
+
+/**
+ * "Backstage passes", like aged brie, increases in Quality as its SellIn value approaches;
+ * Quality increases by 2 when there are 10 days or less and by 3 when there are 5 days or less but
+ * Quality drops to 0 after the concert
+ *
+ * @param item
+ * @returns Item
+ */
+function updateBackStagePasses(item: Item): Item {
+  const { quality, sellIn } = item;
+
+  let updatedQuality = quality;
+  if (sellIn === 0) {
+    return new Item(item.name, decreaseSellIn(sellIn), 0);
+  }
+
+  if (sellIn > 10) {
+    updatedQuality = increaseQuality(quality);
+  } else if (sellIn > 5) {
+    updatedQuality = increaseQuality(increaseQuality(quality));
+  } else if (sellIn < 5) {
+    updatedQuality = increaseQuality(increaseQuality(increaseQuality(quality)));
+  }
+
+  return new Item(item.name, decreaseSellIn(sellIn), updatedQuality);
 }
